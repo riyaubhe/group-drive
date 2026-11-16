@@ -4,11 +4,13 @@ When you drive somewhere in more than one car, it's easy to lose each other and 
 
 **Status:** v1 works. Two cars sync live on a map.
 
-<!-- Demo: add your Vercel link here, e.g. **Demo:** https://your-app.vercel.app -->
-**Demo:** _coming soon_
+**Demo:** https://group-drive.vercel.app (open it on two phones to try it with two cars)
 
-<!-- Screenshot: save an image as docs/screenshot.png, then replace this comment with:
+## Screenshot
+
+<!-- To add a screenshot: save an image as docs/screenshot.png, then replace the line below with:
 ![Group Drive screenshot](docs/screenshot.png) -->
+_Screenshot coming soon._
 
 ## Tech stack
 

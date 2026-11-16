@@ -58,6 +58,10 @@ const SPLIT_CONFIRM_MS = 30000;
 // How long the "took a different route" banner stays up (it also has a × button).
 const BANNER_SHOW_MS = 15000;
 
+// Privacy (from the PRD): once you're this close to the destination,
+// stop sharing your location automatically.
+const ARRIVED_DISTANCE_M = 100;
+
 // The most characters we'll save for one route (about 4 KB).
 // Long trips get simplified more to fit; short trips keep almost every detail.
 const MAX_ROUTE_CHARS = 4000;
@@ -77,6 +81,10 @@ const joinButton = document.getElementById("join-button");
 const startStatus = document.getElementById("start-status");
 const shareLinkInput = document.getElementById("share-link");
 const copyButton = document.getElementById("copy-button");
+const leaveButton = document.getElementById("leave-button");
+const endScreen = document.getElementById("end-screen");
+const endTitle = document.getElementById("end-title");
+const newTripButton = document.getElementById("new-trip-button");
 const etaBar = document.getElementById("eta-bar");
 const locationStatus = document.getElementById("location-status");
 const splitBanner = document.getElementById("split-banner");
@@ -221,6 +229,27 @@ joinButton.addEventListener("click", () => {
 
 splitCloseButton.addEventListener("click", hideSplitBanner);
 
+// "Leave Trip" needs two taps, so you can't leave by bumping it by accident.
+// The first tap changes it to "Tap again"; if you don't, it goes back after 3 seconds.
+let leaveConfirming = false;
+leaveButton.addEventListener("click", () => {
+  if (leaveConfirming) {
+    endTrip("You left the trip.");
+    return;
+  }
+  leaveConfirming = true;
+  leaveButton.textContent = "Tap again";
+  setTimeout(() => {
+    leaveConfirming = false;
+    leaveButton.textContent = "Leave Trip";
+  }, 3000);
+});
+
+// On the end screen: go back to the start screen (the same page, without "?trip=").
+newTripButton.addEventListener("click", () => {
+  window.location.href = window.location.pathname;
+});
+
 copyButton.addEventListener("click", async () => {
   await navigator.clipboard.writeText(shareLinkInput.value);
   copyButton.textContent = "Copied!";
@@ -301,8 +330,12 @@ function showDestination() {
 }
 
 // Firebase runs this every time any car in the trip moves.
+// onValue gives back a function that turns the listener off. We keep them here,
+// so we can stop listening when we leave the trip.
+const stopListeners = [];
+
 function listenForCars() {
-  onValue(ref(db, `trips/${tripId}/cars`), (snapshot) => {
+  const stop = onValue(ref(db, `trips/${tripId}/cars`), (snapshot) => {
     cars = snapshot.val() || {};
 
     // Add a dot for each new car, or move the dot of a car we already have.
@@ -348,11 +381,12 @@ function listenForCars() {
     updateEtaBar();
     checkForSplits();
   });
+  stopListeners.push(stop);
 }
 
 // Firebase runs this every time any car saves a new route (about every 30 seconds per car).
 function listenForRoutes() {
-  onValue(ref(db, `trips/${tripId}/routes`), (snapshot) => {
+  const stop = onValue(ref(db, `trips/${tripId}/routes`), (snapshot) => {
     routes = snapshot.val() || {};
 
     // Draw each car's route, or update the line we already drew.
@@ -384,6 +418,7 @@ function listenForRoutes() {
     updateEtaBar();
     checkForSplits();
   });
+  stopListeners.push(stop);
 }
 
 // Zoom so every car and the destination fit on screen.
@@ -479,11 +514,22 @@ function startSendingLocation() {
 
   // watchPosition asks for permission once, then keeps giving us new positions.
   // We just remember the newest one here.
-  navigator.geolocation.watchPosition(
+  // We save the IDs that watchPosition and setInterval give back,
+  // so endTrip() can turn them off later.
+  gpsWatchId = navigator.geolocation.watchPosition(
     (position) => {
+      if (tripEnded) return;
+
       const isFirstPosition = latestPosition === null;
       latestPosition = position;
       locationStatus.textContent = "";
+
+      // Close enough to the destination? Stop sharing.
+      if (hasArrived()) {
+        endTrip("You’ve arrived.");
+        return;
+      }
+
       if (isFirstPosition) sendLocation(); // show up on the map right away
 
       // Get a new route now if we don't have one yet, or we've moved a lot.
@@ -496,12 +542,13 @@ function startSendingLocation() {
   );
 
   // Every few seconds, send the newest position to Firebase.
-  setInterval(sendLocation, SEND_EVERY_MS);
+  sendTimer = setInterval(sendLocation, SEND_EVERY_MS);
   // Every 30 seconds, get a fresh route from OSRM.
-  setInterval(updateMyRoute, ROUTE_EVERY_MS);
+  routeTimer = setInterval(updateMyRoute, ROUTE_EVERY_MS);
 }
 
 function sendLocation() {
+  if (tripEnded) return; // we left; never send again
   if (!latestPosition) return; // no location yet
 
   const { latitude, longitude, speed, heading } = latestPosition.coords;
@@ -564,6 +611,9 @@ async function updateMyRoute() {
     // OSRM gives [lng, lat] pairs; Leaflet wants [lat, lng]. Flip them.
     const points = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 
+    // If we left the trip while waiting for OSRM, don't save the route.
+    if (tripEnded) return;
+
     await set(ref(db, `trips/${tripId}/routes/${carId}`), {
       color: myColor,
       polyline: shrinkRoute(points), // a few KB instead of ~60 KB
@@ -595,6 +645,49 @@ function shortPlaceName(fullName) {
 // The current time, corrected to match Firebase's clock.
 function serverNow() {
   return Date.now() + serverTimeOffsetMs;
+}
+
+// ---------- Leaving the trip (Leave Trip button, or arriving) ----------
+
+let tripEnded = false;
+let gpsWatchId = null;
+let sendTimer = null;
+let routeTimer = null;
+
+// True when we're within 100 m of the destination.
+function hasArrived() {
+  if (!destination || !latestPosition) return false;
+  const { latitude, longitude } = latestPosition.coords;
+  const metersLeft = L.latLng(latitude, longitude).distanceTo([destination.lat, destination.lng]);
+  return metersLeft <= ARRIVED_DISTANCE_M;
+}
+
+// Stops sharing your location and takes your car out of the trip.
+async function endTrip(message) {
+  if (tripEnded) return; // already done
+  tripEnded = true;
+
+  // 1. Stop the GPS and both timers, so nothing new gets sent.
+  if (gpsWatchId !== null) navigator.geolocation.clearWatch(gpsWatchId);
+  clearInterval(sendTimer);
+  clearInterval(routeTimer);
+
+  // 2. Stop listening for the other cars.
+  stopListeners.forEach((stop) => stop());
+
+  // 3. Show the end screen, and take "?trip=" out of the address
+  //    so refreshing the page doesn't put you back in the trip.
+  endTitle.textContent = message;
+  tripScreen.hidden = true;
+  endScreen.hidden = false;
+  history.replaceState(null, "", window.location.pathname);
+
+  // 4. Delete your car and route from Firebase, so the other phones
+  //    stop showing you (your dot, line and ETA disappear for them).
+  await Promise.all([
+    remove(ref(db, `trips/${tripId}/cars/${carId}`)),
+    remove(ref(db, `trips/${tripId}/routes/${carId}`)),
+  ]);
 }
 
 // ---------- Route-split alert ("Car B took a different route") ----------

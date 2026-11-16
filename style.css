@@ -10,12 +10,13 @@ html, body {
   display: none !important;
 }
 
-/* ---- Screen 1: start (matches assets/Group_Drive.jpg) ---- */
-/* Every rule here starts with #start-screen, so none of it affects the map screen. */
+/* ---- Screens 1 and 3: start and end (match assets/Group_Drive.jpg) ---- */
+/* Both screens have class="cover-screen", so they share these styles.
+   Every rule here starts with .cover-screen, so none of it affects the map screen. */
 
 /* Full-screen map background, faded with a see-through white layer on top
    so the title stays easy to read. */
-#start-screen {
+.cover-screen {
   min-height: 100vh;
   min-height: 100dvh; /* phones: the real visible height, without the browser bars */
   box-sizing: border-box;
@@ -30,7 +31,7 @@ html, body {
 }
 
 /* The column holding the title, input and button */
-#start-screen .panel {
+.cover-screen .panel {
   width: 100%;
   max-width: 540px;
   display: flex;
@@ -42,13 +43,13 @@ html, body {
 
 /* On big screens, let the column grow wider, like the mockup */
 @media (min-width: 1000px) {
-  #start-screen .panel {
+  .cover-screen .panel {
     max-width: 54vw;
   }
 }
 
 /* The big title. clamp(smallest, preferred, biggest) scales it with the screen width. */
-#start-screen h1 {
+.cover-screen h1 {
   margin: 0 0 clamp(12px, 2.5vw, 48px);
   font-size: clamp(3.25rem, 10vw, 12rem);
   font-weight: 700;
@@ -59,13 +60,13 @@ html, body {
 
 /* On phones, make the title a bit bigger so it fills the width, like the mockup */
 @media (max-width: 600px) {
-  #start-screen h1 {
+  .cover-screen h1 {
     font-size: 16vw;
   }
 }
 
 /* Wide, dark, see-through pill for the car name */
-#start-screen input {
+.cover-screen input {
   width: 100%;
   box-sizing: border-box;
   font-family: inherit;
@@ -78,12 +79,12 @@ html, body {
   color: white;
 }
 
-#start-screen input::placeholder {
+.cover-screen input::placeholder {
   color: rgba(255, 255, 255, 0.92);
 }
 
 /* Smaller dark see-through pill, centered under the input */
-#start-screen button {
+.cover-screen button {
   font-family: inherit;
   font-size: clamp(1.6rem, 3vw, 3.6rem);
   font-weight: 600;
@@ -96,19 +97,19 @@ html, body {
   cursor: pointer;
 }
 
-#start-screen button:hover {
+.cover-screen button:hover {
   background: rgba(35, 45, 45, 0.75);
 }
 
 /* A clear outline when you tab to the input or button with the keyboard */
-#start-screen input:focus-visible,
-#start-screen button:focus-visible {
+.cover-screen input:focus-visible,
+.cover-screen button:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 3px;
 }
 
 /* Destination search: the same dark pill, with a small "Search" button inside it */
-#start-screen .search-pill {
+.cover-screen .search-pill {
   width: 100%;
   display: flex;
   align-items: center;
@@ -117,33 +118,33 @@ html, body {
 }
 
 /* The input inside the pill is see-through, because the pill already has the color */
-#start-screen .search-pill input {
+.cover-screen .search-pill input {
   flex: 1;
   min-width: 0;
   background: transparent;
 }
 
 /* Outline the whole pill (not just the input) when you're typing in it */
-#start-screen .search-pill input:focus-visible {
+.cover-screen .search-pill input:focus-visible {
   outline: none;
 }
-#start-screen .search-pill:focus-within {
+.cover-screen .search-pill:focus-within {
   outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 3px;
 }
 
-#start-screen .search-pill button {
+.cover-screen .search-pill button {
   font-size: max(16px, clamp(1.15rem, 1.7vw, 2rem));
   padding: 0.5em 1.1em;
   margin-right: 0.35em;
   background: transparent;
 }
-#start-screen .search-pill button:hover {
+.cover-screen .search-pill button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
 /* Search results: a dark see-through box with one row per place */
-#start-screen .results {
+.cover-screen .results {
   width: 100%;
   box-sizing: border-box;
   max-height: 40vh;
@@ -155,10 +156,10 @@ html, body {
   background: rgba(30, 30, 30, 0.72);
   text-align: left;
 }
-#start-screen .results:empty {
+.cover-screen .results:empty {
   display: none; /* hide the box when there are no results */
 }
-#start-screen .results button {
+.cover-screen .results button {
   width: 100%;
   font-size: 1.05rem;
   line-height: 1.3;
@@ -168,16 +169,21 @@ html, body {
   color: white;
   text-align: left;
 }
-#start-screen .results button:hover {
+.cover-screen .results button:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
 /* The "You've been invited..." message under the button */
-#start-screen .status {
+.cover-screen .status {
   font-size: 1.2rem;
   font-weight: 600;
   color: #1a1a1a;
   max-width: 28em;
+}
+
+/* End screen title ("You left the trip.") is longer than "Group Drive", so a bit smaller */
+#end-title {
+  font-size: clamp(2.6rem, 7vw, 8rem);
 }
 
 /* Hides something on screen but keeps it for screen readers */
@@ -230,6 +236,11 @@ button {
 .top-bar input {
   flex: 1;
   min-width: 0; /* lets the link box shrink on small phones */
+}
+
+/* Red, so it's clearly different from "Copy link" */
+#leave-button {
+  background: #d93025;
 }
 
 /* The ETA bar: one item per car, like "● Car 2 · 4 min behind" */

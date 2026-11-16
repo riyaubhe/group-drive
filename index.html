@@ -19,7 +19,7 @@
 
   <!-- SCREEN 1: shown first. Pick a name, then create or join a trip.
        The outer div is the full-screen map background; .panel holds the centered content. -->
-  <div id="start-screen">
+  <div id="start-screen" class="cover-screen">
     <div class="panel">
       <h1>Group Drive</h1>
 
@@ -51,6 +51,7 @@
     <div class="top-bar">
       <input id="share-link" readonly>
       <button id="copy-button">Copy link</button>
+      <button id="leave-button">Leave Trip</button>
     </div>
     <!-- "Car 2 · 4 min behind": app.js fills this in -->
     <div id="eta-bar" class="eta-bar" hidden></div>
@@ -62,6 +63,16 @@
     </div>
     <div id="map"></div>
     <p id="location-status" class="status"></p>
+  </div>
+
+  <!-- SCREEN 3: shown when you leave the trip or arrive.
+       Same map background as the start screen (class="cover-screen"). -->
+  <div id="end-screen" class="cover-screen" hidden>
+    <div class="panel">
+      <h1 id="end-title">You’ve arrived.</h1>
+      <p class="status">Your location is no longer being shared.</p>
+      <button id="new-trip-button">Start a New Trip</button>
+    </div>
   </div>
 
   <!-- Leaflet's code. Loaded before app.js because app.js uses it. -->

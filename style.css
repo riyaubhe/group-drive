@@ -256,6 +256,33 @@ button {
   flex-shrink: 0;
 }
 
+/* The "Car B took a different route" banner: warm yellow so it stands out,
+   with a stripe on the left in that car's color (set by app.js) */
+.split-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-left: 6px solid #e8710a;
+  background: #fef3c7;
+  color: #78350f;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.split-banner span {
+  flex: 1;
+}
+
+/* The × button: no blue background, just the symbol */
+.split-banner button {
+  padding: 0 8px;
+  background: transparent;
+  color: #78350f;
+  font-size: 24px;
+  line-height: 1;
+}
+
 #map {
   flex: 1; /* fill all leftover space */
 }

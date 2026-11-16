@@ -54,6 +54,12 @@
     </div>
     <!-- "Car 2 · 4 min behind": app.js fills this in -->
     <div id="eta-bar" class="eta-bar" hidden></div>
+    <!-- "Car B took a different route": shown by app.js when cars split up.
+         role="alert" makes screen readers read it out right away. -->
+    <div id="split-banner" class="split-banner" role="alert" hidden>
+      <span id="split-text"></span>
+      <button id="split-close" aria-label="Dismiss alert">×</button>
+    </div>
     <div id="map"></div>
     <p id="location-status" class="status"></p>
   </div>

@@ -27,6 +27,7 @@ import {
   ref,
   set,
   get,
+  remove,
   onValue,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
@@ -41,6 +42,21 @@ const SEND_EVERY_MS = 4000;
 // How often to ask OSRM for our route. The free server asks people not to
 // send lots of requests, so once every 30 seconds is plenty.
 const ROUTE_EVERY_MS = 30000;
+
+// If we've driven this far since our last route (for example, took a different
+// road), get a new route right away instead of waiting for the 30-second refresh.
+const REROUTE_DISTANCE_M = 500;
+
+// Never ask OSRM more than once every 5 seconds, no matter what.
+const MIN_ROUTE_GAP_MS = 5000;
+
+// Route-split alert (from the PRD): two cars count as "on different routes" when
+// they're more than 100 m off each other's route for 30 seconds in a row.
+const SPLIT_DISTANCE_M = 100;
+const SPLIT_CONFIRM_MS = 30000;
+
+// How long the "took a different route" banner stays up (it also has a × button).
+const BANNER_SHOW_MS = 15000;
 
 // The most characters we'll save for one route (about 4 KB).
 // Long trips get simplified more to fit; short trips keep almost every detail.
@@ -63,6 +79,9 @@ const shareLinkInput = document.getElementById("share-link");
 const copyButton = document.getElementById("copy-button");
 const etaBar = document.getElementById("eta-bar");
 const locationStatus = document.getElementById("location-status");
+const splitBanner = document.getElementById("split-banner");
+const splitText = document.getElementById("split-text");
+const splitCloseButton = document.getElementById("split-close");
 
 // ---------- Which trip are we in, and which car are we? ----------
 
@@ -175,6 +194,7 @@ async function searchPlaces(query) {
 // ---------- Buttons ----------
 
 createButton.addEventListener("click", async () => {
+  unlockSound(); // browsers only allow sound after you tap something
   if (!chosenDestination) {
     startStatus.textContent = "Search for your destination and pick one first.";
     return;
@@ -195,8 +215,11 @@ createButton.addEventListener("click", async () => {
 });
 
 joinButton.addEventListener("click", () => {
+  unlockSound(); // browsers only allow sound after you tap something
   startTrip();
 });
+
+splitCloseButton.addEventListener("click", hideSplitBanner);
 
 copyButton.addEventListener("click", async () => {
   await navigator.clipboard.writeText(shareLinkInput.value);
@@ -222,6 +245,11 @@ async function startTrip() {
   // The share link is this page's address plus "?trip=<id>".
   shareLinkInput.value = `${window.location.origin}${window.location.pathname}?trip=${tripId}`;
 
+  // If you were in this trip before (say you refreshed the page), your old route
+  // is still saved and would give everyone a wrong ETA. Delete it; a fresh one
+  // comes as soon as we know where you are.
+  await remove(ref(db, `trips/${tripId}/routes/${carId}`));
+
   setUpMap();
   showDestination();
   listenForCars();
@@ -244,6 +272,7 @@ function pickMyColor(existingCars) {
 let map;
 const markers = {};    // one dot per car, like { carId: marker }
 const routeLines = {}; // one line per car, like { carId: line }
+const routePoints = {}; // each car's route as [[lat, lng], ...], used to check for splits
 let lastCarCount = 0;
 
 function setUpMap() {
@@ -317,6 +346,7 @@ function listenForCars() {
     }
 
     updateEtaBar();
+    checkForSplits();
   });
 }
 
@@ -328,6 +358,7 @@ function listenForRoutes() {
     // Draw each car's route, or update the line we already drew.
     for (const [id, route] of Object.entries(routes)) {
       const points = decodePolyline(route.polyline); // text → [[lat, lng], ...]
+      routePoints[id] = points;
 
       if (routeLines[id]) {
         routeLines[id].setLatLngs(points);
@@ -346,10 +377,12 @@ function listenForRoutes() {
       if (!routes[id]) {
         routeLines[id].remove();
         delete routeLines[id];
+        delete routePoints[id];
       }
     }
 
     updateEtaBar();
+    checkForSplits();
   });
 }
 
@@ -382,7 +415,7 @@ function updateEtaBar() {
     const minutesLeft = Math.max(0, Math.round((myArrival - serverNow()) / 60000));
     items.push(etaItem(myColor, "You", `${minutesLeft} min to go`));
   } else {
-    items.push(etaItem(myColor, "You", "finding your route…"));
+    items.push(etaItem(myColor, "You", "Calculating…"));
   }
 
   // Then: every other car, compared to me.
@@ -392,7 +425,8 @@ function updateEtaBar() {
     const theirArrival = arrivalTime(routes[id]);
     let text;
     if (!myArrival || !theirArrival) {
-      text = "finding route…";
+      // We need BOTH routes to compare. Until then, don't guess.
+      text = "Calculating…";
     } else {
       // Positive = they'll get there after me (behind). Negative = before me (ahead).
       const minutesApart = Math.round((theirArrival - myArrival) / 60000);
@@ -450,11 +484,10 @@ function startSendingLocation() {
       const isFirstPosition = latestPosition === null;
       latestPosition = position;
       locationStatus.textContent = "";
-      if (isFirstPosition) {
-        // Show up on the map, with a route, right away.
-        sendLocation();
-        updateMyRoute();
-      }
+      if (isFirstPosition) sendLocation(); // show up on the map right away
+
+      // Get a new route now if we don't have one yet, or we've moved a lot.
+      if (needsNewRouteNow()) updateMyRoute();
     },
     (error) => {
       locationStatus.textContent = `Can't get your location: ${error.message}`;
@@ -486,11 +519,32 @@ function sendLocation() {
   });
 }
 
+let lastRoutePosition = null;   // where we were when we last got a route
+let lastRouteRequestAt = 0;     // when we last asked OSRM (milliseconds)
+let routeRequestInProgress = false;
+
+// True if we have no route yet, or have moved more than 500 m since the last one.
+function needsNewRouteNow() {
+  if (lastRoutePosition === null) return true;
+
+  const { latitude, longitude } = latestPosition.coords;
+  const metersMoved = L.latLng(latitude, longitude).distanceTo(lastRoutePosition);
+  return metersMoved > REROUTE_DISTANCE_M;
+}
+
 // Asks OSRM for the driving route from where I am to the destination,
 // then saves it in Firebase so every phone can draw it.
-// Each phone only asks for ITS OWN route, so OSRM gets 1 request per car every 30 seconds.
+// Each phone only asks for ITS OWN route. That's normally 1 request every 30 seconds,
+// plus an extra one right away when we join or move more than 500 m.
 async function updateMyRoute() {
   if (!destination || !latestPosition) return;
+
+  // Don't ask again while we're still waiting for an answer,
+  // or if we asked less than 5 seconds ago.
+  if (routeRequestInProgress) return;
+  if (Date.now() - lastRouteRequestAt < MIN_ROUTE_GAP_MS) return;
+  routeRequestInProgress = true;
+  lastRouteRequestAt = Date.now();
 
   const { latitude, longitude } = latestPosition.coords;
 
@@ -516,8 +570,13 @@ async function updateMyRoute() {
       durationSec: Math.round(route.duration), // OSRM's driving time, in seconds
       computedAt: serverTimestamp(),
     });
+
+    // Remember where this route starts, to measure how far we move from here.
+    lastRoutePosition = L.latLng(latitude, longitude);
   } catch (error) {
     locationStatus.textContent = `Couldn't get your route: ${error.message}`;
+  } finally {
+    routeRequestInProgress = false; // done, whether it worked or not
   }
 }
 
@@ -536,6 +595,152 @@ function shortPlaceName(fullName) {
 // The current time, corrected to match Firebase's clock.
 function serverNow() {
   return Date.now() + serverTimeOffsetMs;
+}
+
+// ---------- Route-split alert ("Car B took a different route") ----------
+//
+// Two cars are "on the same route" unless EACH one is more than 100 m off the
+// OTHER's route. Why both? If a friend is 2 km behind you on the same highway,
+// they're not on YOUR route (it starts where you are), but you ARE on theirs.
+//
+// A split only counts after the cars were on the same route first. Otherwise,
+// two cars starting from different towns would get an alert right away.
+// And it has to last 30 seconds, so a quick detour or a GPS glitch doesn't count.
+
+// For each other car: are we confirmed together, and since when has that
+// looked like it's changing? Like { carId: { together: false, changingSince: null } }
+const splitWatch = {};
+
+// Runs every time a car moves or a route changes.
+function checkForSplits() {
+  const myRoute = routePoints[carId];
+  if (!myRoute || !latestPosition) return; // no route yet, nothing to compare
+
+  const me = [latestPosition.coords.latitude, latestPosition.coords.longitude];
+  const now = Date.now();
+
+  for (const [id, car] of Object.entries(cars)) {
+    if (id === carId) continue;
+    const theirRoute = routePoints[id];
+    if (!theirRoute) continue;
+
+    const theyAreOffMyRoute = distanceToRoute([car.lat, car.lng], myRoute) > SPLIT_DISTANCE_M;
+    const iAmOffTheirRoute = distanceToRoute(me, theirRoute) > SPLIT_DISTANCE_M;
+    const togetherNow = !(theyAreOffMyRoute && iAmOffTheirRoute);
+
+    if (!splitWatch[id]) splitWatch[id] = { together: false, changingSince: null };
+    const watch = splitWatch[id];
+
+    if (togetherNow === watch.together) {
+      // Nothing changed (or a short blip ended). Reset the 30-second timer.
+      watch.changingSince = null;
+      continue;
+    }
+
+    // It looks different from before. Start the timer, or check if it's been 30 seconds.
+    if (watch.changingSince === null) watch.changingSince = now;
+    if (now - watch.changingSince < SPLIT_CONFIRM_MS) continue;
+
+    // It's lasted 30 seconds: make it official.
+    watch.together = togetherNow;
+    watch.changingSince = null;
+
+    // Alert only when going from together → apart. Then this car can't alert
+    // again until it's been back on our route for 30 seconds (a new split).
+    if (!togetherNow) showSplitAlert(car);
+  }
+}
+
+let hideBannerTimer = null;
+
+function showSplitAlert(car) {
+  splitText.textContent = `${car.name} took a different route`;
+  splitBanner.style.borderLeftColor = car.color;
+  splitBanner.hidden = false;
+  map.invalidateSize(); // the map got shorter; tell Leaflet
+  playAlertSound();
+
+  // Hide it by itself after a while, so the driver never has to tap it.
+  clearTimeout(hideBannerTimer);
+  hideBannerTimer = setTimeout(hideSplitBanner, BANNER_SHOW_MS);
+}
+
+function hideSplitBanner() {
+  splitBanner.hidden = true;
+  map.invalidateSize(); // the map got taller again
+}
+
+// Shortest distance, in meters, from a point to a route line.
+function distanceToRoute(point, route) {
+  if (route.length === 1) return distanceToSegment(point, route[0], route[0]);
+
+  let shortest = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    shortest = Math.min(shortest, distanceToSegment(point, route[i], route[i + 1]));
+  }
+  return shortest;
+}
+
+// Distance in meters from point p to the straight piece of road from a to b.
+// Over short distances the earth is basically flat, so we turn
+// latitude/longitude into meters (x = east, y = north, with p at 0,0).
+function distanceToSegment(p, a, b) {
+  const metersPerDegreeLat = 111320;
+  const metersPerDegreeLng = 111320 * Math.cos((p[0] * Math.PI) / 180);
+
+  const ax = (a[1] - p[1]) * metersPerDegreeLng;
+  const ay = (a[0] - p[0]) * metersPerDegreeLat;
+  const bx = (b[1] - p[1]) * metersPerDegreeLng;
+  const by = (b[0] - p[0]) * metersPerDegreeLat;
+
+  // Find the spot on a→b closest to p (t = 0 is a, t = 1 is b).
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  let t = lengthSquared === 0 ? 0 : -(ax * dx + ay * dy) / lengthSquared;
+  t = Math.max(0, Math.min(1, t));
+
+  return Math.hypot(ax + t * dx, ay + t * dy);
+}
+
+// ---------- Alert sound ----------
+//
+// We make a short two-note chime with the browser's Web Audio feature,
+// so there's no sound file to load.
+
+let audioContext = null;
+
+// Browsers block sound until you've tapped something on the page,
+// so we call this from the Create/Join button.
+function unlockSound() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioContext = new AudioContextClass();
+  }
+  audioContext.resume();
+}
+
+function playAlertSound() {
+  if (!audioContext) return;
+  const start = audioContext.currentTime;
+
+  // Two quick notes: high (880 Hz), then lower (660 Hz).
+  [880, 660].forEach((frequency, i) => {
+    const noteStart = start + i * 0.18;
+    const oscillator = audioContext.createOscillator();
+    const volume = audioContext.createGain();
+    oscillator.frequency.value = frequency;
+
+    // Fade in and out quickly so it doesn't click.
+    volume.gain.setValueAtTime(0.0001, noteStart);
+    volume.gain.exponentialRampToValueAtTime(0.3, noteStart + 0.02);
+    volume.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.16);
+
+    oscillator.connect(volume).connect(audioContext.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.17);
+  });
 }
 
 // ---------- Making routes small ----------

@@ -1,0 +1,74 @@
+/* Make the page fill the whole phone screen */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+/* Anything with the "hidden" attribute stays hidden */
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Screen 1: start ---- */
+.panel {
+  max-width: 360px;
+  margin: 15vh auto 0;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0 0 8px;
+}
+
+input {
+  font-size: 16px; /* 16px or bigger stops iPhones from zooming in when you tap */
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+button {
+  font-size: 16px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1a73e8;
+  color: white;
+  cursor: pointer;
+}
+
+.status {
+  margin: 0;
+  color: #555;
+}
+
+/* ---- Screen 2: trip ---- */
+/* A column: share bar on top, map takes the rest, status at the bottom */
+#trip-screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.top-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+}
+
+.top-bar input {
+  flex: 1;
+  min-width: 0; /* lets the link box shrink on small phones */
+}
+
+#map {
+  flex: 1; /* fill all leftover space */
+}
+
+#location-status:not(:empty) {
+  padding: 8px;
+}

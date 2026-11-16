@@ -10,20 +10,122 @@ html, body {
   display: none !important;
 }
 
-/* ---- Screen 1: start ---- */
-.panel {
-  max-width: 360px;
-  margin: 15vh auto 0;
-  padding: 0 16px;
+/* ---- Screen 1: start (matches assets/Group_Drive.jpg) ---- */
+/* Every rule here starts with #start-screen, so none of it affects the map screen. */
+
+/* Full-screen map background, faded with a see-through white layer on top
+   so the title stays easy to read. */
+#start-screen {
+  min-height: 100vh;
+  min-height: 100dvh; /* phones: the real visible height, without the browser bars */
+  box-sizing: border-box;
+  padding: 24px 16px;
+  display: flex;
+  align-items: center;     /* center vertically */
+  justify-content: center; /* center horizontally */
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
+    url("assets/map-bg.jpg") center / cover no-repeat;
+  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+}
+
+/* The column holding the title, input and button */
+#start-screen .panel {
+  width: 100%;
+  max-width: 540px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
 }
 
-h1 {
-  margin: 0 0 8px;
+/* On big screens, let the column grow wider, like the mockup */
+@media (min-width: 1000px) {
+  #start-screen .panel {
+    max-width: 54vw;
+  }
 }
 
+/* The big title. clamp(smallest, preferred, biggest) scales it with the screen width. */
+#start-screen h1 {
+  margin: 0 0 clamp(12px, 2.5vw, 48px);
+  font-size: clamp(3.25rem, 10vw, 12rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #111;
+}
+
+/* On phones, make the title a bit bigger so it fills the width, like the mockup */
+@media (max-width: 600px) {
+  #start-screen h1 {
+    font-size: 16vw;
+  }
+}
+
+/* Wide, dark, see-through pill for the car name */
+#start-screen input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: max(16px, clamp(1.15rem, 1.7vw, 2rem)); /* never under 16px, so iPhones don't zoom in */
+  font-weight: 600;
+  padding: 0.95em 1.3em;
+  border: none;
+  border-radius: 999px; /* fully rounded ends */
+  background: rgba(30, 30, 30, 0.72);
+  color: white;
+}
+
+#start-screen input::placeholder {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Smaller dark see-through pill, centered under the input */
+#start-screen button {
+  font-family: inherit;
+  font-size: clamp(1.6rem, 3vw, 3.6rem);
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.2em 1.1em;
+  border: none;
+  border-radius: 999px;
+  background: rgba(35, 45, 45, 0.62);
+  color: #a3bdb5; /* soft sage green, like the mockup */
+  cursor: pointer;
+}
+
+#start-screen button:hover {
+  background: rgba(35, 45, 45, 0.75);
+}
+
+/* A clear outline when you tab to the input or button with the keyboard */
+#start-screen input:focus-visible,
+#start-screen button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+/* The "You've been invited..." message under the button */
+#start-screen .status {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  max-width: 28em;
+}
+
+/* Hides something on screen but keeps it for screen readers */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Shared styles (the map screen's link box and Copy button use these) ---- */
 input {
   font-size: 16px; /* 16px or bigger stops iPhones from zooming in when you tap */
   padding: 12px;

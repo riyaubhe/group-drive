@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Group Drive</title>
 
+  <!-- Cormorant Garamond, a classic serif font from Google Fonts (start screen only) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap">
+
   <!-- Leaflet's styles (the map library) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <!-- Our own styles -->
@@ -12,17 +17,23 @@
 </head>
 <body>
 
-  <!-- SCREEN 1: shown first. Pick a name, then create or join a trip. -->
-  <div id="start-screen" class="panel">
-    <h1>Group Drive</h1>
-    <label for="name-input">Your car's name</label>
-    <input id="name-input" type="text" placeholder="e.g. Blue Honda" maxlength="20">
+  <!-- SCREEN 1: shown first. Pick a name, then create or join a trip.
+       The outer div is the full-screen map background; .panel holds the centered content. -->
+  <div id="start-screen">
+    <div class="panel">
+      <h1>Group Drive</h1>
 
-    <!-- app.js shows only one of these two buttons -->
-    <button id="create-button">Create a trip</button>
-    <button id="join-button" hidden>Join trip</button>
+      <!-- The label is hidden on screen (the placeholder shows instead),
+           but screen readers still read it out. -->
+      <label for="name-input" class="visually-hidden">Your car's name</label>
+      <input id="name-input" type="text" placeholder="Your car’s name" maxlength="20" autocomplete="off">
 
-    <p id="start-status" class="status"></p>
+      <!-- app.js shows only one of these two buttons -->
+      <button id="create-button">Create Trip</button>
+      <button id="join-button" hidden>Join Trip</button>
+
+      <p id="start-status" class="status"></p>
+    </div>
   </div>
 
   <!-- SCREEN 2: shown once you're in a trip. Share link on top, map below. -->
